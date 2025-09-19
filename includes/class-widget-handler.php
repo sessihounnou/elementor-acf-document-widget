@@ -7,12 +7,17 @@ class EADW_Widget_Handler
 {
 
     /**
-     * Récupérer l'URL du document ACF
+     * Récupérer l'URL du document ACF - Version universelle
      */
     public static function get_acf_document_url($field_name, $post_id = null)
     {
         if (empty($field_name)) {
             return '';
+        }
+
+        // Si pas de post ID, essayer de récupérer le contexte actuel
+        if ($post_id === null || $post_id === 0) {
+            $post_id = self::get_current_post_id();
         }
 
         // Si c'est un groupe de champs (format "group_name:field_name")
@@ -28,63 +33,83 @@ class EADW_Widget_Handler
     }
 
     /**
-     * Obtenir le titre du document
+     * Obtenir le titre du document - Version universelle
      */
     public static function get_document_title($title_field, $post_id = null)
     {
         if (empty($title_field)) {
-            return get_the_title($post_id);
+            return self::get_current_post_title();
+        }
+
+        if ($post_id === null || $post_id === 0) {
+            $post_id = self::get_current_post_id();
         }
 
         // Si c'est un groupe de champs
         if (strpos($title_field, ':') !== false) {
             list($group_name, $title_field) = explode(':', $title_field, 2);
             $group = get_field($group_name, $post_id);
-            return isset($group[$title_field]) ? $group[$title_field] : get_the_title($post_id);
+            return isset($group[$title_field]) ? $group[$title_field] : self::get_current_post_title();
         }
 
         // Champ direct
         $title = get_field($title_field, $post_id);
-        return $title ? $title : get_the_title($post_id);
+        return $title ? $title : self::get_current_post_title();
     }
 
     /**
-     * Récupérer l'URL depuis une balise dynamique
+     * Récupérer le post ID courant dans TOUS les contextes
      */
-    public static function get_dynamic_url($settings_key, $widget)
+    private static function get_current_post_id()
     {
-        $value = $widget->get_settings($settings_key);
+        global $post;
 
-        // Vérifier si c'est une balise dynamique
-        if (isset($value['dynamic']) && $value['dynamic']['active']) {
-            $dynamic_tag = $value['dynamic'];
-            if ($dynamic_tag['id'] === 'acf.field') {
-                $field_name = $dynamic_tag['settings']['field'];
-                return self::get_acf_document_url($field_name);
+        // 1. Contexte d'un post/page
+        if ($post && isset($post->ID)) {
+            return $post->ID;
+        }
+
+        // 2. Modèles/templates Elementor
+        if (function_exists('elementor')) {
+            $elementor_post_id = get_queried_object_id();
+            if ($elementor_post_id) {
+                return $elementor_post_id;
             }
         }
 
-        // Valeur statique
-        return $value;
+        // 3. Archive/requête courante
+        global $wp_query;
+        if ($wp_query && $wp_query->have_posts()) {
+            $posts = $wp_query->posts;
+            if (!empty($posts)) {
+                return $posts[0]->ID;
+            }
+        }
+
+        // 4. Page d'accueil
+        if (is_front_page()) {
+            $front_page_id = get_option('page_on_front');
+            if ($front_page_id) {
+                return $front_page_id;
+            }
+        }
+
+        // 5. Dernier fallback
+        return get_the_ID();
     }
 
     /**
-     * Récupérer le titre depuis une balise dynamique
+     * Récupérer le titre du post courant
      */
-    public static function get_dynamic_title($settings_key, $widget)
+    private static function get_current_post_title()
     {
-        $value = $widget->get_settings($settings_key);
+        global $post;
 
-        // Vérifier si c'est une balise dynamique
-        if (isset($value['dynamic']) && $value['dynamic']['active']) {
-            $dynamic_tag = $value['dynamic'];
-            if ($dynamic_tag['id'] === 'acf.field') {
-                $field_name = $dynamic_tag['settings']['field'];
-                return self::get_document_title($field_name);
-            }
+        if ($post && isset($post->post_title)) {
+            return $post->post_title;
         }
 
-        // Valeur statique
-        return $value;
+        // Fallback
+        return get_the_title();
     }
 }
